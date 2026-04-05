@@ -1,7 +1,9 @@
 pypdf
+flask
 langchain==1.1.3
 langchain-core==1.2.5
 langchain-community==0.4.1
+langchain-ollama
 langchain-chroma==1.0.0
 langchain-text-splitters==1.0.0
 numpy<2.0.0

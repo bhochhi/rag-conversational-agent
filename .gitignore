@@ -3,3 +3,6 @@
 backup
 chroma-ollama
 chroma-openai
+venv/**
+.chromoa-ollama
+.chromoa-openai

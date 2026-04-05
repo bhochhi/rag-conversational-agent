@@ -14,17 +14,40 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 DATA_PATH = os.getenv('DATA_PATH')
 VECTOR_DB_OPENAI_PATH = os.getenv('VECTOR_DB_OPENAI_PATH')
 VECTOR_DB_OLLAMA_PATH = os.getenv('VECTOR_DB_OLLAMA_PATH')
+EMBEDDING_MODEL_NAME = os.getenv('EMBEDDING_MODEL_NAME', 'ollama')
+
+
+def is_placeholder_openai_key(api_key: str | None) -> bool:
+    if not api_key:
+        return True
+    placeholder_values = {
+        "YOUR_OPENAI_KEY_HERE",
+        "YOUR_OPENAI_API_KEY_HERE",
+    }
+    return api_key.strip() in placeholder_values
 
 def main():
     # check whether the database should be cleared or not (using the --clear flag)
     parser = argparse.ArgumentParser()
     parser.add_argument("--reset", nargs="?", const="both", choices=["ollama", "openai", "both"], help="Reset the database.")
-    parser.add_argument("--embedding-model", type=str, default="openai", help="The embedding model to use (ollama or openai).")
+    parser.add_argument(
+        "--embedding-model",
+        type=str,
+        choices=["ollama", "openai"],
+        default=EMBEDDING_MODEL_NAME,
+        help="The embedding model to use (ollama or openai).",
+    )
     args = parser.parse_args()
 
     if args.reset:
         reset_databases(args.reset)
         return
+
+    if args.embedding_model == "openai" and is_placeholder_openai_key(OPENAI_API_KEY):
+        raise ValueError(
+            "OpenAI embeddings selected but OPENAI_API_KEY is missing or placeholder. "
+            "Use --embedding-model ollama for local setup or set a valid OPENAI_API_KEY."
+        )
 
     # choose the embedding model
     embeddings = Embeddings(model_name=args.embedding_model, api_key=OPENAI_API_KEY)
@@ -142,7 +165,7 @@ def rebuild_database(embedding_model):
         embeddings = Embeddings(model_name="openai", api_key=OPENAI_API_KEY)
         db_path = VECTOR_DB_OPENAI_PATH
     elif embedding_model == "ollama":
-        embeddings = Embeddings(model_name="ollama", api_key=OPENAI_API_KEY)
+        embeddings = Embeddings(model_name="ollama")
         db_path = VECTOR_DB_OLLAMA_PATH
     else:
         raise ValueError("Unsupported embedding model specified.")
