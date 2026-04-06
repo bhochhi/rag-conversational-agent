@@ -1,10 +1,10 @@
-# Copilot Instructions: Build a RAG Search App with AWS Bedrock
+# Copilot Instructions: Build cortex-rag — A RAG Search App with AWS Bedrock
 
 ## Project Goal
 
-Build a simple Retrieval-Augmented Generation (RAG) web app that:
+Build a simple Retrieval-Augmented Generation (RAG) web app called **cortex-rag** that:
 - Indexes PDF documents into a Chroma vector store using **AWS Bedrock Titan embeddings**
-- Answers user questions by retrieving relevant document chunks and sending them to an **AWS Bedrock LLM** (Amazon Titan Text)
+- Answers user questions by retrieving relevant document chunks and sending them to **Amazon Nova Lite** via AWS Bedrock
 - Exposes a minimal Flask web UI for querying
 
 No Ollama. No OpenAI. No Anthropic. AWS Bedrock only.
@@ -16,7 +16,7 @@ No Ollama. No OpenAI. No Anthropic. AWS Bedrock only.
 | Concern         | Technology                                      |
 |-----------------|-------------------------------------------------|
 | Embeddings      | `amazon.titan-embed-text-v2:0` via AWS Bedrock  |
-| LLM             | `amazon.titan-text-express-v1` via AWS Bedrock  |
+| LLM             | `amazon.nova-lite-v1:0` via AWS Bedrock          |
 | Vector Store    | ChromaDB (local, persisted to disk)             |
 | RAG Framework   | LangChain (`langchain-aws`, `langchain-chroma`) |
 | Web Server      | Flask                                           |
@@ -31,7 +31,7 @@ No Ollama. No OpenAI. No Anthropic. AWS Bedrock only.
 Create the project with exactly this layout:
 
 ```
-rag-bedrock/
+cortex-rag/
 ├── .env                        # AWS credentials and app config
 ├── requirements.txt
 ├── populate_database.py        # Script: load PDFs → embed → store in Chroma
@@ -41,7 +41,7 @@ rag-bedrock/
 ├── retrieval/
 │   └── rag_retriever.py        # Queries Chroma DB, formats results
 ├── llm/
-│   └── bedrock_llm.py          # Wraps Titan Text via boto3 for generation
+│   └── bedrock_llm.py          # Wraps Nova Lite via boto3 for generation
 ├── templates/
 │   └── index.html              # Simple chat UI
 ├── data/                       # Place PDF files here (not committed)
@@ -64,7 +64,7 @@ AWS_DEFAULT_REGION=us-east-1
 DATA_PATH=data/
 VECTOR_DB_PATH=chroma_db/
 EMBEDDING_MODEL_ID=amazon.titan-embed-text-v2:0
-LLM_MODEL_ID=amazon.titan-text-express-v1
+LLM_MODEL_ID=amazon.nova-lite-v1:0
 NUM_RELEVANT_DOCS=4
 ```
 
@@ -128,8 +128,8 @@ Go straight to the answer without mentioning that you are basing it on the provi
 """
 
 
-class BedrockTitanLLM:
-    """Invokes amazon.titan-text-express-v1 via boto3 for text generation."""
+class NovaLiteLLM:
+    """Invokes amazon.nova-lite-v1:0 via boto3 using the Messages API format."""
 
     def __init__(self, model_id: str, region: str):
         self.model_id = model_id
@@ -139,9 +139,14 @@ class BedrockTitanLLM:
         prompt = PROMPT_TEMPLATE.format(context=context, question=question)
 
         body = json.dumps({
-            "inputText": prompt,
-            "textGenerationConfig": {
-                "maxTokenCount": 512,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"text": prompt}]
+                }
+            ],
+            "inferenceConfig": {
+                "maxTokens": 512,
                 "temperature": 0.7,
                 "topP": 0.9,
             }
@@ -155,7 +160,7 @@ class BedrockTitanLLM:
         )
 
         result = json.loads(response["body"].read())
-        return result["results"][0]["outputText"].strip()
+        return result["output"]["message"]["content"][0]["text"].strip()
 ```
 
 ---
@@ -286,13 +291,13 @@ from flask import Flask, request, render_template, jsonify
 from dotenv import load_dotenv
 from embeddings.bedrock_embeddings import get_embedding_function
 from retrieval.rag_retriever import RAGRetriever
-from llm.bedrock_llm import BedrockTitanLLM
+from llm.bedrock_llm import NovaLiteLLM
 
 load_dotenv()
 
 VECTOR_DB_PATH = os.getenv("VECTOR_DB_PATH", "chroma_db/")
 EMBEDDING_MODEL_ID = os.getenv("EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v2:0")
-LLM_MODEL_ID = os.getenv("LLM_MODEL_ID", "amazon.titan-text-express-v1")
+LLM_MODEL_ID = os.getenv("LLM_MODEL_ID", "amazon.nova-lite-v1:0")
 AWS_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 NUM_RELEVANT_DOCS = int(os.getenv("NUM_RELEVANT_DOCS", "4"))
 
@@ -300,7 +305,7 @@ app = Flask(__name__)
 
 embedding_function = get_embedding_function(EMBEDDING_MODEL_ID, AWS_REGION)
 retriever = RAGRetriever(vector_db_path=VECTOR_DB_PATH, embedding_function=embedding_function)
-llm = BedrockTitanLLM(model_id=LLM_MODEL_ID, region=AWS_REGION)
+llm = NovaLiteLLM(model_id=LLM_MODEL_ID, region=AWS_REGION)
 
 
 @app.route("/")
@@ -336,7 +341,7 @@ if __name__ == "__main__":
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>RAG Search – AWS Bedrock</title>
+  <title>cortex-rag – AWS Bedrock</title>
   <style>
     body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; }
     h1 { color: #232f3e; }
@@ -348,8 +353,8 @@ if __name__ == "__main__":
   </style>
 </head>
 <body>
-  <h1>RAG Search</h1>
-  <p>Powered by <strong>AWS Bedrock</strong> – Titan Embeddings + Titan Text</p>
+  <h1>cortex-rag</h1>
+  <p>Powered by <strong>AWS Bedrock</strong> – Titan Embeddings + Nova Lite</p>
 
   <textarea id="query-input" rows="3" placeholder="Ask a question about your documents..."></textarea>
   <br>
